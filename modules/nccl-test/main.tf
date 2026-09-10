@@ -103,6 +103,8 @@ resource "helm_release" "nccl-test" {
   atomic           = true
   wait_for_jobs    = true
 
+  values = [yamlencode({ nodeSelector = var.node_selector, tolerations = var.tolerations })]
+
   set = [
     {
       name  = "numberOfHosts"

@@ -38,3 +38,12 @@ output "filesystem_csi" {
     default_storage_class_patch = var.filesystem_csi.make_default_storage_class
   } : null
 }
+
+output "gpu_pools" {
+  value       = module.gpu_pools.pools
+  description = "Named pool inventory and Kubernetes scheduling selectors/tolerations. Empty in legacy mode."
+}
+
+output "pool_gpu_clusters" {
+  value = module.gpu_pools.gpu_clusters
+}

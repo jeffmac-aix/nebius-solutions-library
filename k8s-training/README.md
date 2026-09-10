@@ -3,6 +3,83 @@
 ## Features
 
 - Creating a Kubernetes cluster with CPU and GPU nodes.
+- Independently configured [named GPU pools](#named-gpu-pools), with CPU simulation for placement and autoscaling tests.
+
+## Named GPU pools
+
+Set `gpu_pools` to a map of independently configured pools. Leave it unset (`null`)
+to retain the existing `gpu_node_groups` and global GPU settings. An explicit empty
+map creates no GPU pools. The system CPU group remains configured separately.
+
+```hcl
+gpu_pools = {
+  training = {
+    platform         = "gpu-h200-sxm"
+    preset           = "8gpu-128vcpu-1600gb"
+    fixed_node_count = 2
+  }
+  inference = {
+    platform    = "gpu-h100-sxm"
+    preset      = "1gpu-16vcpu-200gb"
+    autoscaling = { min_node_count = 1, max_node_count = 3 }
+  }
+}
+gpu_nodes_driverfull_image = true
+```
+
+Choose platform/preset combinations available in your region. Each pool supports
+its own scaling, disk, labels, taints, public IPs, and optional InfiniBand attachment.
+Use `pool_gpu_clusters` plus `gpu_cluster_key`, or `existing_gpu_cluster_id`, instead
+of the legacy global `infiniband_fabric`. The driver-management strategy remains
+cluster-wide, using one common managed-image driver preset or the existing GPU
+Operator installation. Named pools currently reject global MIG and NUMA settings.
+The Network Operator remains enabled for real GPU pools, including non-InfiniBand
+B200 pools; CPU simulation disables GPU software.
+
+To run the existing NCCL benchmark, set `test_mode = true` and
+`nccl_test_pool = "training"`. The selected pool must use `gpu-h100-sxm`, an
+`8gpu-` preset, a positive fixed node count, and InfiniBand. Workers use the pool's
+selector and tolerations. This retains the existing H100 benchmark image, resource
+requests, and network settings; other GPU flavors need a separately validated
+benchmark configuration. Simulation cannot run this GPU test.
+The bundled Ray cluster/service also uses the legacy global platform and must remain
+disabled with named pools; deploy pool-aware workloads separately using the outputs.
+
+`terraform output -json gpu_pools` returns pool IDs and Kubernetes selectors and
+tolerations. Pods should use both, and real GPU workloads must also request GPU
+resources. Flavor selection is explicit; no automatic cost/performance ranking is added.
+
+For testing without GPUs, set `pool_simulation = { enabled = true }` in a separate
+cluster/state. This replaces GPU hardware with CPU nodes while retaining the pool
+scheduling contract and suppressing GPU drivers, InfiniBand, and NCCL. See the
+[complete example](examples/multi-pool) and [live CPU smoke test](pool-validation).
+
+### Existing deployments
+
+Leaving `gpu_pools` unset preserves legacy GPU resource addresses. A `moved` block
+preserves the network operator's state when its installation becomes conditional.
+Do not simply set `gpu_pools` on an existing deployment: without state migration,
+Terraform will remove the legacy groups and create the named ones.
+
+For an explicit migration, first back up state and match each existing node group's
+name, hardware, disk, scaling, networking, filesystem, driver, and taint settings.
+The new default GPU taint is an intentional behavior change; use `taints = []` when
+matching an existing untainted group. Add a deployment-specific move for each group:
+
+```hcl
+moved {
+  from = nebius_mk8s_v1_node_group.gpu[0]
+  to   = module.gpu_pools.nebius_mk8s_v1_node_group.this["training"]
+}
+```
+
+If moving an existing Terraform-managed GPU cluster, preserve its name and fabric
+in `pool_gpu_clusters` and move `nebius_compute_v1_gpu_cluster.fabric_2[0]` to
+`module.gpu_pools.nebius_compute_v1_gpu_cluster.this["training"]` as well. Merely
+referencing its ID does not preserve a resource removed from this stack's configuration.
+Adjust address prefixes when calling this solution as a module. Inspect the resulting
+plan; state moves alone do not prevent rolling node-template updates. A replacement-free
+migration of an existing real GPU installation still requires validation on that installation.
 
 ## Prerequisites
 

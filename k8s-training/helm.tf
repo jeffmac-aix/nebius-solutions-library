@@ -1,7 +1,9 @@
 module "network-operator" {
+  count = local.gpu_software_enabled ? 1 : 0
   depends_on = [
     nebius_mk8s_v1_node_group.cpu-only,
     nebius_mk8s_v1_node_group.gpu,
+    module.gpu_pools,
   ]
   source     = "../modules/network-operator"
   parent_id  = var.parent_id
@@ -9,10 +11,11 @@ module "network-operator" {
 }
 
 module "gpu-operator" {
-  count = (!var.gpu_nodes_driverfull_image && !var.custom_driver) ? 1 : 0
+  count = local.gpu_software_enabled && (!var.gpu_nodes_driverfull_image && !var.custom_driver) ? 1 : 0
 
   depends_on = [
-    module.network-operator
+    module.network-operator,
+    module.gpu_pools,
   ]
   source       = "../modules/gpu-operator"
   parent_id    = var.parent_id
@@ -22,9 +25,10 @@ module "gpu-operator" {
 }
 
 module "gpu-operator-custom" {
-  count = var.custom_driver ? 1 : 0
+  count = local.gpu_software_enabled && var.custom_driver ? 1 : 0
   depends_on = [
-    module.network-operator
+    module.network-operator,
+    module.gpu_pools,
   ]
   source       = "../modules/gpu-operator-custom"
   mig_strategy = var.mig_strategy != null ? var.mig_strategy : "none"
@@ -33,7 +37,8 @@ module "gpu-operator-custom" {
 
 
 module "device-plugin" {
-  count = var.gpu_nodes_driverfull_image ? 1 : 0
+  depends_on = [module.gpu_pools, nebius_mk8s_v1_node_group.gpu]
+  count      = local.gpu_software_enabled && var.gpu_nodes_driverfull_image ? 1 : 0
 
   source     = "../modules/device-plugin"
   parent_id  = var.parent_id
@@ -70,10 +75,22 @@ module "o11y" {
 }
 
 module "nccl-test" {
-  count = var.test_mode ? 1 : 0
+  count = var.test_mode && (var.gpu_pools == null ? var.gpu_node_groups > 0 : !var.pool_simulation.enabled) ? 1 : 0
   depends_on = [
     module.gpu-operator,
+    module.gpu-operator-custom,
+    module.device-plugin,
+    module.network-operator,
+    module.gpu_pools,
   ]
   source          = "../modules/nccl-test"
-  number_of_hosts = nebius_mk8s_v1_node_group.gpu[0].fixed_node_count
+  number_of_hosts = var.gpu_pools == null ? nebius_mk8s_v1_node_group.gpu[0].fixed_node_count : try(local.named_gpu_pools[var.nccl_test_pool].fixed_node_count, 0)
+  node_selector   = var.gpu_pools == null ? {} : try(module.gpu_pools.pools[var.nccl_test_pool].node_selector, {})
+  tolerations     = var.gpu_pools == null ? [] : try(module.gpu_pools.pools[var.nccl_test_pool].tolerations, [])
+}
+
+# Preserve the legacy network operator address when introducing conditional installation.
+moved {
+  from = module.network-operator
+  to   = module.network-operator[0]
 }

@@ -202,3 +202,8 @@ resource "random_string" "random" {
   numeric = true
   special = false
 }
+
+locals {
+  named_gpu_pools      = var.gpu_pools == null ? {} : var.gpu_pools
+  gpu_software_enabled = var.gpu_pools == null ? true : (!var.pool_simulation.enabled && length(var.gpu_pools) > 0)
+}

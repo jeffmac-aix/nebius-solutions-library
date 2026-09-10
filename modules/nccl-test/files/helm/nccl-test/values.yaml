@@ -1,2 +1,4 @@
 numberOfHosts: 2
 kubernetesClusterDomain: cluster.local
+nodeSelector: {}
+tolerations: []

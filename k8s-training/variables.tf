@@ -527,3 +527,69 @@ variable "binpacking_forced_namespaces" {
   type        = list(string)
   default     = ["default"]
 }
+
+variable "gpu_pools" {
+  description = "Stable pool keys are Terraform identities. Kubernetes labels belong to node_labels, not resource labels."
+  type = map(object({
+    name             = optional(string)
+    platform         = string
+    preset           = string
+    fixed_node_count = optional(number)
+    autoscaling = optional(object({
+      min_node_count = number
+      max_node_count = number
+    }))
+    disk_type               = optional(string, "NETWORK_SSD")
+    disk_size_gib           = optional(number, 1023)
+    public_ips              = optional(bool, false)
+    preemptible             = optional(bool, false)
+    gpu_cluster_key         = optional(string)
+    existing_gpu_cluster_id = optional(string)
+    attach_filesystems      = optional(bool, true)
+    node_labels             = optional(map(string), {})
+    taints = optional(list(object({
+      key    = string
+      value  = optional(string, "")
+      effect = string
+    })), [{ key = "nvidia.com/gpu", value = "true", effect = "NO_SCHEDULE" }])
+  }))
+  default = null
+
+}
+
+variable "pool_simulation" {
+  description = "CPU-only scheduling simulation. Never advertises NVIDIA GPU resources. Use a separate cluster/state."
+  type = object({
+    enabled       = optional(bool, false)
+    platform      = optional(string, "cpu-d3")
+    preset        = optional(string, "4vcpu-16gb")
+    disk_size_gib = optional(number, 64)
+  })
+  default = {}
+
+  validation {
+    condition     = startswith(var.pool_simulation.platform, "cpu-") && !strcontains(var.pool_simulation.preset, "gpu") && var.pool_simulation.disk_size_gib > 0
+    error_message = "Simulation must use a CPU platform/preset and a positive disk size."
+  }
+}
+
+
+variable "pool_gpu_clusters" {
+  description = "Named InfiniBand placement domains; pools reference these keys."
+  type = map(object({
+    infiniband_fabric = string
+    name              = optional(string)
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for c in var.pool_gpu_clusters : trimspace(c.infiniband_fabric) != ""])
+    error_message = "Every GPU cluster needs a nonempty InfiniBand fabric."
+  }
+}
+
+variable "nccl_test_pool" {
+  description = "Named fixed-size H100 InfiniBand pool for the existing eight-GPU NCCL test. Required with test_mode and gpu_pools."
+  type        = string
+  default     = null
+}

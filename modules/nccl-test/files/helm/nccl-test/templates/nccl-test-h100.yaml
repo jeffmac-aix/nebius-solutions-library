@@ -47,6 +47,14 @@ spec:
       replicas:  {{ .Values.numberOfHosts }}
       template:
         spec:
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           automountServiceAccountToken: false
           containers:
           - image: cr.eu-north1.nebius.cloud/nebius-benchmarks/nccl-tests:2.19.4-ubu22.04-cu12.2

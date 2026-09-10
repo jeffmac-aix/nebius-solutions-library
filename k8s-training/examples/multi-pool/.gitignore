@@ -1,0 +1,5 @@
+*.plan
+*.kubeconfig
+pools.json
+*.auto.tfvars*
+test.tfvars*
